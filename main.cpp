@@ -48,9 +48,10 @@ struct WebSocketServer
 
     void Poll()
     {
-        std::cout << "start polling..." << std::endl;
         auto sz = mServer.poll();
-        std::cout << "poll done, " << sz << " handlers processed" << std::endl;
+
+        if (sz > 0)
+            std::cout << sz << " handlers processed" << std::endl;
     }
 
     void OnMessage(websocketpp::connection_hdl hdl, message_ptr msg)
