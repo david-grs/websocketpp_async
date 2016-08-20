@@ -4,7 +4,7 @@
 #include <vector>
 #include <chrono>
 #include <iostream>
-#include <thread>
+#include <algorithm>
 #include <memory>
 #include <cstdlib>
 
@@ -12,8 +12,6 @@ struct WebSocketServer
 {
     using server = websocketpp::server<websocketpp::config::asio>;
     using message_ptr = server::message_ptr;
-
-    std::vector<websocketpp::connection_hdl> m_connections;
 
     void Listen(int port)
     {
@@ -23,6 +21,7 @@ struct WebSocketServer
 
         mServer.init_asio();
         mServer.set_message_handler(bind(&WebSocketServer::OnMessage, this, _1, _2));
+        mServer.set_close_handler(bind(&WebSocketServer::OnClose, this, _1));
 
         websocketpp::lib::error_code err;
         mServer.listen(websocketpp::lib::asio::ip::tcp::v4(), port, err);
@@ -40,7 +39,6 @@ struct WebSocketServer
             return;
 
         auto& hdl = m_connections.back();
-        m_connections.pop_back();
 
         mServer.send(hdl, "{\"fx_underlyings\": [\"FOO\", \"BAR\"], \"otc_underlyings\": []}", websocketpp::frame::opcode::text);
         mServer.close(hdl, 0, "bye");
@@ -60,8 +58,19 @@ struct WebSocketServer
         m_connections.emplace_back(hdl);
     }
 
+    void OnClose(websocketpp::connection_hdl hdl)
+    {
+        std::cout << "on_close called with hdl: " << hdl.lock().get() << std::endl;
+
+        auto it = std::find_if(m_connections.begin(), m_connections.end(), [&](const auto& lhs) { return lhs.lock().get() == hdl.lock().get(); });
+        assert(it != m_connections.end());
+        m_connections.erase(it);
+    }
+
 private:
     server mServer;
+
+    std::vector<websocketpp::connection_hdl> m_connections;
 };
 
 int main(int argc, char** argv)
