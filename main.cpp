@@ -8,7 +8,7 @@
 #include <memory>
 #include <cstdlib>
 
-struct Server
+struct WebSocketServer
 {
     using server = websocketpp::server<websocketpp::config::asio>;
     using message_ptr = server::message_ptr;
@@ -48,31 +48,34 @@ struct Server
         mThread.reset(new std::thread([&]()
                                       {
                                           mServer.init_asio();
-                                          mServer.set_message_handler(bind(&Server::OnMessage, this, _1, _2));
+                                          mServer.set_message_handler(bind(&WebSocketServer::OnMessage, this, _1, _2));
                                           mServer.listen(websocketpp::lib::asio::ip::tcp::v4(), port);
                                           mServer.start_accept();
-
                                           mServer.poll_one();
-                                          std::cout << "bla" << std::endl;
                                       }));
     }
 
-   private:
+private:
     server mServer;
     std::unique_ptr<std::thread> mThread;
 };
 
 int main(int argc, char** argv)
 {
-    Server serv;
-    serv.Listen(atoi(argv[1]));
-    std::cout << "run" << std::endl;
+    if (argc != 2)
+        throw std::runtime_error("usage: " + std::string(argv[0]) + " <port>");
+
+    int port = std::atoi(argv[1]);
+
+    WebSocketServer server;
+    server.Listen(port);
 
     while (1)
     {
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        serv.Send();
+        server.Send();
     }
-    serv.Run();
+
+    server.Run();
     return 0;
 }
