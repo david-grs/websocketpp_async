@@ -1,6 +1,11 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
+
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+
 #include <vector>
 #include <chrono>
 #include <iostream>
@@ -22,6 +27,7 @@ struct WebSocketServer
         mServer.init_asio();
         mServer.set_message_handler(bind(&WebSocketServer::OnMessage, this, _1, _2));
         mServer.set_close_handler(bind(&WebSocketServer::OnClose, this, _1));
+        mServer.set_open_handler(bind(&WebSocketServer::OnNewClient, this, _1));
 
         websocketpp::lib::error_code err;
         mServer.listen(websocketpp::lib::asio::ip::tcp::v4(), port, err);
@@ -33,17 +39,6 @@ struct WebSocketServer
         mServer.poll();
     }
 
-    void Send()
-    {
-        if (m_connections.empty())
-            return;
-
-        auto& hdl = m_connections.back();
-
-        mServer.send(hdl, "{\"fx_underlyings\": [\"FOO\", \"BAR\"], \"otc_underlyings\": []}", websocketpp::frame::opcode::text);
-        mServer.close(hdl, 0, "bye");
-    }
-
     void Poll()
     {
         auto sz = mServer.poll();
@@ -52,25 +47,73 @@ struct WebSocketServer
             std::cout << sz << " handlers processed" << std::endl;
     }
 
+    void OnNewClient(websocketpp::connection_hdl hdl)
+    {
+        std::cout << "on_new_client called with hdl: " << hdl.lock().get() << std::endl;
+
+        auto& view = boost::multi_index::get<ByHandler>(mConnections);
+        auto it = view.find(hdl);
+
+        assert(it == mConnections.end());
+
+        connection newClient;
+        newClient.hdl = hdl;
+
+        static int count = 1;
+        newClient.name = "fx_" + std::to_string(count++);
+
+        mConnections.insert(newClient);
+    }
+
     void OnMessage(websocketpp::connection_hdl hdl, message_ptr msg)
     {
         std::cout << "on_message called with hdl: " << hdl.lock().get() << " and message: " << msg->get_payload() << std::endl;
-        m_connections.emplace_back(hdl);
+
+        auto& view = boost::multi_index::get<ByHandler>(mConnections);
+        auto it = view.find(hdl);
+
+        assert(it != mConnections.end());
+        const_cast<connection&>(*it).messages.emplace_back(msg->get_payload());
+
+        mServer.send(hdl, "{\"fx_underlyings\": [\"FOO\", \"BAR\"], \"otc_underlyings\": []}", websocketpp::frame::opcode::text);
+        //mServer.close(hdl, 0, "bye");
     }
 
     void OnClose(websocketpp::connection_hdl hdl)
     {
         std::cout << "on_close called with hdl: " << hdl.lock().get() << std::endl;
 
-        auto it = std::find_if(m_connections.begin(), m_connections.end(), [&](const auto& lhs) { return lhs.lock().get() == hdl.lock().get(); });
-        assert(it != m_connections.end());
-        m_connections.erase(it);
+        auto& view = boost::multi_index::get<ByHandler>(mConnections);
+        auto it = view.find(hdl);
+
+        assert(it != mConnections.end());
+        mConnections.erase(it);
     }
 
 private:
     server mServer;
 
-    std::vector<websocketpp::connection_hdl> m_connections;
+    struct connection
+    {
+        websocketpp::connection_hdl hdl;
+        std::string name;
+
+        std::vector<std::string> messages;
+    };
+
+    using connections = boost::multi_index_container<
+        connection,
+        boost::multi_index::indexed_by<
+            boost::multi_index::hashed_unique<BOOST_MULTI_INDEX_MEMBER(connection, websocketpp::connection_hdl, hdl)>,
+            boost::multi_index::hashed_unique<BOOST_MULTI_INDEX_MEMBER(connection, std::string, name)>>>;
+
+    enum
+    {
+        ByHandler = 0,
+        ByName = 1,
+    };
+
+    connections mConnections;
 };
 
 int main(int argc, char** argv)
@@ -83,11 +126,10 @@ int main(int argc, char** argv)
     WebSocketServer server;
     server.Listen(port);
 
-    // simulating a busy event loop that polls
+    // simulate an event loop that polls each ms
     while (1)
     {
         server.Poll();
-        server.Send();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
