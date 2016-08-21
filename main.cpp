@@ -24,6 +24,10 @@ struct WebSocketServer
         using websocketpp::lib::placeholders::_2;
         using websocketpp::lib::bind;
 
+        // Disable all logging
+        mServer.clear_access_channels(websocketpp::log::alevel::all);
+        mServer.clear_error_channels(websocketpp::log::alevel::all);
+
         mServer.init_asio();
         mServer.set_message_handler(bind(&WebSocketServer::OnMessage, this, _1, _2));
         mServer.set_close_handler(bind(&WebSocketServer::OnClose, this, _1));
@@ -60,9 +64,9 @@ struct WebSocketServer
         static int count = 1;
         newClient.name = "fx_" + std::to_string(count++);
 
-        std::cout << "new client " << newClient.name << ", clients = " << mConnections.size() << std::endl;
-
         mConnections.insert(newClient);
+
+        std::cout << "new client " << newClient.name << ", clients = " << mConnections.size() << std::endl;
     }
 
     void OnMessage(websocketpp::connection_hdl hdl, message_ptr msg)
