@@ -19,19 +19,37 @@ struct Script
     Script()
     {
         mState = luaL_newstate();
+        luaL_openlibs(mState);
     }
 
     ~Script()
     {
         Stop();
     }
- 
+
     void Stop()
     {
         lua_close(mState);
     }
 
-  lua_State* mState;
+    void Execute(const std::string& filename)
+    {
+        if (luaL_loadfile(mState, filename.c_str()) != LUA_OK)
+            throw std::runtime_error("error while loading lua file: " + GetLastError());
+
+        if (lua_pcall(mState, 0, LUA_MULTRET, 0) != LUA_OK)
+            throw std::runtime_error("error while running lua script: " + GetLastError());
+    }
+
+private:
+    std::string GetLastError()
+    {
+        std::string message = lua_tostring(mState, -1);
+        lua_pop(mState, 1);
+        return message;
+    }
+
+    lua_State* mState;
 };
 
 struct WebSocketServer
@@ -173,12 +191,15 @@ private:
 
 int main(int argc, char** argv)
 {
-    if (argc != 2)
-        throw std::runtime_error("usage: " + std::string(argv[0]) + " <port>");
+    if (argc != 3)
+        throw std::runtime_error("usage: " + std::string(argv[0]) + " <port> <lua_script>");
 
     int port = std::atoi(argv[1]);
 
     Script script;
+    script.Execute(argv[2]);
+
+    std::cout << "running " << argv[2] << "..." << std::endl;
 
     WebSocketServer server;
     server.Listen(port);

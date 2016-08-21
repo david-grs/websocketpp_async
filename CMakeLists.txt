@@ -8,5 +8,5 @@ include_directories(${Boost_INCLUDE_DIRS})
 
 include_directories("/home/dgrs/cpp/thirdparty/websocketpp")
 add_executable(ws main.cpp)
-target_link_libraries(ws ${Boost_LIBRARIES} pthread lua)
+target_link_libraries(ws ${Boost_LIBRARIES} pthread lua5.2)
 
