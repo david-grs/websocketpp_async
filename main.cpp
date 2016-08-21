@@ -56,7 +56,7 @@ struct WebSocketServer
         auto& view = boost::multi_index::get<ByHandler>(mConnections);
         auto it = view.find(hdl);
 
-        assert(it == mConnections.end());
+        assert(it == view.end());
 
         connection newClient;
         newClient.hdl = hdl;
@@ -74,13 +74,12 @@ struct WebSocketServer
         auto& view = boost::multi_index::get<ByHandler>(mConnections);
         auto it = view.find(hdl);
 
-        assert(it != mConnections.end());
+        assert(it != view.end());
         const_cast<connection&>(*it).messages.emplace_back(msg->get_payload());
 
         std::cout << "rcv message from " << it->name << ", sending answer..." << std::endl;
 
         mServer.send(hdl, "{\"fx_underlyings\": [\"FOO\", \"BAR\"], \"otc_underlyings\": []}", websocketpp::frame::opcode::text);
-        //mServer.close(hdl, 0, "bye");
     }
 
     void OnClose(websocketpp::connection_hdl hdl)
@@ -88,11 +87,40 @@ struct WebSocketServer
         auto& view = boost::multi_index::get<ByHandler>(mConnections);
         auto it = view.find(hdl);
 
-        assert(it != mConnections.end());
+        assert(it != view.end());
 
-        std::cout << "closing connection of client " << it->name;
+        std::cout << "[OnClose] connection with client " << it->name << " closed." << std::endl;
         mConnections.erase(it);
-        std::cout << ", remaining clients = " << mConnections.size() << std::endl;
+        std::cout << "[OnClose] remaining clients = " << mConnections.size() << std::endl;
+    }
+
+    void Close(const std::string& name)
+    {
+        auto& view = boost::multi_index::get<ByName>(mConnections);
+        auto it = view.lower_bound(name);
+        auto itEnd = view.upper_bound(name);
+
+        if (it == view.end())
+        {
+            std::cout << "cant find any connection with name " << name << std::endl;
+            return;
+        }
+
+        for (; it != itEnd; ++it)
+        {
+            std::cout << "[Close] closing connection of client " << it->name << std::endl;
+
+            auto con = mServer.get_con_from_hdl(it->hdl);
+
+            if (con->get_state() == websocketpp::session::state::open)
+            {
+                mServer.close(it->hdl, 0, "bye");
+            }
+            else
+            {
+                std::cout << "[Close] cant close ; state = " << con->get_state() << std::endl;
+            }
+        }
     }
 
 private:
@@ -109,7 +137,7 @@ private:
     using connections = boost::multi_index_container<
         connection,
         boost::multi_index::indexed_by<
-            boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(connection, websocketpp::connection_hdl, hdl), std::owner_less<websocketpp::connection_hdl>>,
+            boost::multi_index::ordered_unique<BOOST_MULTI_INDEX_MEMBER(connection, websocketpp::connection_hdl, hdl), std::owner_less<websocketpp::connection_hdl>>,
             boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(connection, std::string, name)>
         >>;
 
@@ -132,11 +160,16 @@ int main(int argc, char** argv)
     WebSocketServer server;
     server.Listen(port);
 
+    auto start = std::chrono::system_clock::now();
+
     // simulate an event loop that polls each ms
     while (1)
     {
         server.Poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        if (std::chrono::system_clock::now() > start + std::chrono::seconds(10))
+            server.Close("fx_2");
     }
 
     return 0;
