@@ -45,10 +45,23 @@ struct Script
             throw std::runtime_error("error while running lua script: " + GetLastError());
     }
 
+    void Callback()
+    {
+        // lua_getglobal(mState, "hello");
+
+        lua_rawgeti(mState, LUA_REGISTRYINDEX, mCallback);
+        lua_pushnumber(mState, 1);
+
+        if (lua_pcall(mState, 1, 1, 0 ) != 0)
+            throw std::runtime_error("failed to call callback: " + GetLastError());
+    }
+
 private:
     int Subscribe(lua_State* L)
     {
-        std::cout << "subscribe has been called" << std::endl;
+        mCallback = luaL_ref(L, LUA_REGISTRYINDEX);
+        std::cout << "subscribe has been called with " << mCallback << std::endl;
+
         return 0;
     }
 
@@ -66,6 +79,7 @@ private:
     }
 
     lua_State* mState;
+    int mCallback;
 };
 
 struct WebSocketServer
@@ -214,6 +228,9 @@ int main(int argc, char** argv)
 
     Script script;
     script.Execute(argv[2]);
+    script.Callback();
+    script.Callback();
+    script.Callback();
 
     std::cout << "running " << argv[2] << "..." << std::endl;
 
