@@ -60,22 +60,20 @@ struct WebSocketServer
         static int count = 1;
         newClient.name = "fx_" + std::to_string(count++);
 
-        std::cout << "new client: hdl: " << hdl.lock().get() << ", " << newClient.name << std::endl;
+        std::cout << "new client " << newClient.name << ", clients = " << mConnections.size() << std::endl;
 
         mConnections.insert(newClient);
     }
 
     void OnMessage(websocketpp::connection_hdl hdl, message_ptr msg)
     {
-        std::cout << "on_message called with hdl: " << hdl.lock().get() << " and message: " << msg->get_payload() << std::endl;
-
         auto& view = boost::multi_index::get<ByHandler>(mConnections);
         auto it = view.find(hdl);
 
         assert(it != mConnections.end());
         const_cast<connection&>(*it).messages.emplace_back(msg->get_payload());
 
-        std::cout << "send message back to " << it->name << std::endl;
+        std::cout << "rcv message from " << it->name << ", sending answer..." << std::endl;
 
         mServer.send(hdl, "{\"fx_underlyings\": [\"FOO\", \"BAR\"], \"otc_underlyings\": []}", websocketpp::frame::opcode::text);
         //mServer.close(hdl, 0, "bye");
@@ -83,13 +81,14 @@ struct WebSocketServer
 
     void OnClose(websocketpp::connection_hdl hdl)
     {
-        std::cout << "on_close called with hdl: " << hdl.lock().get() << std::endl;
-
         auto& view = boost::multi_index::get<ByHandler>(mConnections);
         auto it = view.find(hdl);
 
         assert(it != mConnections.end());
+
+        std::cout << "closing connection of client " << it->name;
         mConnections.erase(it);
+        std::cout << ", remaining clients = " << mConnections.size() << std::endl;
     }
 
 private:
