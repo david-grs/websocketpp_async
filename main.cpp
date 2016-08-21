@@ -37,11 +37,27 @@ struct Script
         if (luaL_loadfile(mState, filename.c_str()) != LUA_OK)
             throw std::runtime_error("error while loading lua file: " + GetLastError());
 
+        lua_pushlightuserdata(mState, this);
+        lua_pushcclosure(mState, &Script::SubscribeHelper, 1);
+        lua_setglobal(mState, "subscribe");
+
         if (lua_pcall(mState, 0, LUA_MULTRET, 0) != LUA_OK)
             throw std::runtime_error("error while running lua script: " + GetLastError());
     }
 
 private:
+    int Subscribe(lua_State* L)
+    {
+        std::cout << "subscribe has been called" << std::endl;
+        return 0;
+    }
+
+    static int SubscribeHelper(lua_State* L)
+    {
+        Script* script = (Script*)lua_touserdata(L, lua_upvalueindex(1));
+        return script->Subscribe(L);
+    }
+
     std::string GetLastError()
     {
         std::string message = lua_tostring(mState, -1);
