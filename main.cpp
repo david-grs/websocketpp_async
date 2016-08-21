@@ -1,10 +1,11 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
-
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/member.hpp>
+
+#include <lua5.2/lua.hpp>
 
 #include <vector>
 #include <chrono>
@@ -12,6 +13,26 @@
 #include <algorithm>
 #include <memory>
 #include <cstdlib>
+
+struct Script
+{
+    Script()
+    {
+        mState = luaL_newstate();
+    }
+
+    ~Script()
+    {
+        Stop();
+    }
+ 
+    void Stop()
+    {
+        lua_close(mState);
+    }
+
+  lua_State* mState;
+};
 
 struct WebSocketServer
 {
@@ -157,6 +178,8 @@ int main(int argc, char** argv)
 
     int port = std::atoi(argv[1]);
 
+    Script script;
+
     WebSocketServer server;
     server.Listen(port);
 
@@ -171,6 +194,8 @@ int main(int argc, char** argv)
         if (std::chrono::system_clock::now() > start + std::chrono::seconds(10))
             server.Close("fx_2");
     }
+
+    script.Stop();
 
     return 0;
 }
