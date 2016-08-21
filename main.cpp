@@ -3,7 +3,7 @@
 
 
 #include <boost/multi_index_container.hpp>
-#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/member.hpp>
 
 #include <vector>
@@ -49,8 +49,6 @@ struct WebSocketServer
 
     void OnNewClient(websocketpp::connection_hdl hdl)
     {
-        std::cout << "on_new_client called with hdl: " << hdl.lock().get() << std::endl;
-
         auto& view = boost::multi_index::get<ByHandler>(mConnections);
         auto it = view.find(hdl);
 
@@ -61,6 +59,8 @@ struct WebSocketServer
 
         static int count = 1;
         newClient.name = "fx_" + std::to_string(count++);
+
+        std::cout << "new client: hdl: " << hdl.lock().get() << ", " << newClient.name << std::endl;
 
         mConnections.insert(newClient);
     }
@@ -74,6 +74,8 @@ struct WebSocketServer
 
         assert(it != mConnections.end());
         const_cast<connection&>(*it).messages.emplace_back(msg->get_payload());
+
+        std::cout << "send message back to " << it->name << std::endl;
 
         mServer.send(hdl, "{\"fx_underlyings\": [\"FOO\", \"BAR\"], \"otc_underlyings\": []}", websocketpp::frame::opcode::text);
         //mServer.close(hdl, 0, "bye");
@@ -104,8 +106,9 @@ private:
     using connections = boost::multi_index_container<
         connection,
         boost::multi_index::indexed_by<
-            boost::multi_index::hashed_unique<BOOST_MULTI_INDEX_MEMBER(connection, websocketpp::connection_hdl, hdl)>,
-            boost::multi_index::hashed_unique<BOOST_MULTI_INDEX_MEMBER(connection, std::string, name)>>>;
+            boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(connection, websocketpp::connection_hdl, hdl), std::owner_less<websocketpp::connection_hdl>>,
+            boost::multi_index::ordered_non_unique<BOOST_MULTI_INDEX_MEMBER(connection, std::string, name)>
+        >>;
 
     enum
     {
